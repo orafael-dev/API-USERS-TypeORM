@@ -5,9 +5,12 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { AuthRegisterDTO } from './dto/auth-register.dto';
-import { UserService } from 'src/user/user.service';
-import * as bcrypt from 'bcrypt';
 import { MailerService } from '@nestjs-modules/mailer';
+import { Repository } from 'typeorm';
+import { InjectRepository } from '@nestjs/typeorm';
+import { UserService } from '../user/user.service';
+import { UserEntity } from '../user/entitites/user.entity';
+import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class AuthService {
@@ -15,21 +18,25 @@ export class AuthService {
   private audience = 'users';
 
   constructor(
-    private readonly jtwervice: JwtService,
+    private readonly jwtService: JwtService,
     private readonly userService: UserService,
     private readonly mailer: MailerService,
+    @InjectRepository(UserEntity)
+    private usersRepository: Repository<UserEntity>,
   ) {}
 
-  createToken(user: User) {
+  createToken(user: UserEntity) {
+    console.log('createToken chamado no Login: user =>', user);
+
     return {
-      accessToken: this.jtwervice.sign(
+      accessToken: this.jwtService.sign(
         {
           id: user.id,
           name: user.name,
           email: user.email,
         },
         {
-          expiresIn: '5 days',
+          expiresIn: '7 days',
           subject: String(user.id),
           issuer: this.issuer,
           audience: this.audience,
@@ -40,9 +47,9 @@ export class AuthService {
 
   checkToken(token: string) {
     try {
-      const data = this.jtwervice.verify(token, {
-        audience: this.audience,
+      const data = this.jwtService.verify(token, {
         issuer: this.issuer,
+        audience: this.audience,
       });
       return data;
     } catch (error) {
@@ -60,11 +67,7 @@ export class AuthService {
   }
 
   async login(email: string, password: string) {
-    const user = await this.prisma.user.findFirst({
-      where: {
-        email,
-      },
-    });
+    const user = await this.usersRepository.findOneBy({ email });
 
     if (!user) {
       throw new UnauthorizedException('Email e/ou senha incorretos');
@@ -73,22 +76,20 @@ export class AuthService {
     if (!(await bcrypt.compare(password, user.password))) {
       throw new UnauthorizedException('Email e/ou senha incorretos');
     }
-
+    console.log('createToken chamado no Login: user =>', user);
     return this.createToken(user);
   }
 
   async forget(email: string) {
-    const user = await this.prisma.user.findFirst({
-      where: {
-        email,
-      },
+    const user = await this.usersRepository.findOneBy({
+      email,
     });
 
     if (!user) {
       throw new UnauthorizedException('Email está incorreto');
     }
 
-    const token = this.jtwervice.sign(
+    const token = this.jwtService.sign(
       {
         id: user.id,
       },
@@ -109,12 +110,12 @@ export class AuthService {
         token,
       },
     });
-    return true;
+    return { success: true };
   }
 
   async reset(password: string, token: string) {
     try {
-      const data: any = this.jtwervice.verify(token, {
+      const data: any = this.jwtService.verify(token, {
         issuer: 'forget',
         audience: 'users',
       });
@@ -125,14 +126,12 @@ export class AuthService {
 
       password = await bcrypt.hash(password, 10);
 
-      const user = await this.prisma.user.update({
-        where: {
-          id: data.id,
-        },
-        data: {
-          password,
-        },
+      await this.usersRepository.update(Number(data.id), {
+        password,
       });
+
+      const user = await this.userService.showById(Number(data.id));
+
       return this.createToken(user);
     } catch (error) {
       throw new BadRequestException(error);
@@ -141,6 +140,7 @@ export class AuthService {
 
   async register(data: AuthRegisterDTO) {
     const user = await this.userService.create(data);
+    console.log('createToken chamado no register: user =>', user);
 
     return this.createToken(user);
   }

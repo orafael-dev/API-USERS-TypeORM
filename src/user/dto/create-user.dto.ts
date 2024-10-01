@@ -1,23 +1,29 @@
-import { IsDateString, IsEmail, IsEnum, IsNumber, IsOptional, IsString, IsStrongPassword } from "class-validator"
-import { Role } from "src/enums/role.enum"
+import {
+  IsDateString,
+  IsEmail,
+  IsEnum,
+  IsOptional,
+  IsString,
+  IsStrongPassword,
+} from 'class-validator';
+import { Role } from 'src/enums/role.enum';
 
 export class CreateUserDTO {
-
   @IsString()
-  name :string
+  name: string;
 
   @IsEmail()
-  email: string
+  email: string;
 
   @IsString()
   @IsStrongPassword()
-  password: string
+  password: string;
 
   @IsOptional()
   @IsDateString()
-  birthAt: string
+  birthAt?: string;
 
   @IsOptional()
   @IsEnum(Role)
-  role: number
+  role?: number;
 }
